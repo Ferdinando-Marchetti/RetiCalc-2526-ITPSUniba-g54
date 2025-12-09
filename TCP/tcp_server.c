@@ -121,7 +121,7 @@ int main() {
         else if (!strcmp(operazione, "MOLTIPLICAZIONE"))
             risultato = n1 * n2;
         else
-            risultato = n1 / n2;
+        	risultato = (n2 == 0 ? 0 : n1 / n2);
 
         send(clientSocket, (char*)&risultato, sizeof(int), 0);
 

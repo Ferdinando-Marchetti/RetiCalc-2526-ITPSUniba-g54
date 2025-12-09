@@ -1,16 +1,17 @@
 #if defined WIN32
-#include <winsock.h>
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
 #else
-#define closesocket close
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <unistd.h>
+    #define closesocket close
+    #include <sys/socket.h>
+    #include <arpa/inet.h>
+    #include <unistd.h>
+    #include <netdb.h>
 #endif
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <netdb.h>
 
 #define BUFFERSIZE 512
 #define PROTOPORT 27015
@@ -34,10 +35,12 @@ int main() {
     }
 #endif
 
+    // 1) Richiesta hostname
     char serverName[100];
     printf("Inserisci nome server (es. localhost): ");
-    scanf("%s", serverName);
+    scanf("%99s", serverName);
 
+    // 2) Risoluzione hostname
     struct hostent *host;
     host = gethostbyname(serverName);
     if (!host) {
@@ -46,20 +49,27 @@ int main() {
         return -1;
     }
 
-    char *serverIP = inet_ntoa(*(struct in_addr*)host->h_addr_list[0]);
+    // 3) Conversione IP leggibile
+    struct in_addr addr;
+    memcpy(&addr, host->h_addr_list[0], sizeof(struct in_addr));
+    char *serverIP = inet_ntoa(addr);
+    printf("IP del server risolto: %s\n", serverIP);
 
+    // 4) Creazione socket
     int Csocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (Csocket < 0) {
-        ErrorHandler("socket() failed");
+        ErrorHandler("socket() failed.\n");
         return -1;
     }
 
+    // 5) Configurazione indirizzo server
     struct sockaddr_in sad;
     memset(&sad, 0, sizeof(sad));
     sad.sin_family = AF_INET;
     memcpy(&sad.sin_addr, host->h_addr_list[0], host->h_length);
     sad.sin_port = htons(PROTOPORT);
 
+    // 6) Connessione
     if (connect(Csocket, (struct sockaddr*)&sad, sizeof(sad)) < 0) {
         ErrorHandler("Connect failed.\n");
         closesocket(Csocket);
@@ -67,20 +77,32 @@ int main() {
         return -1;
     }
 
-    // 5) ricezione connessione avvenuta
+    // 7) Ricezione messaggio iniziale
     char buf[BUFFERSIZE];
-    int bytesRcvd = recv(Csocket, buf, BUFFERSIZE-1, 0);
+    int bytesRcvd = recv(Csocket, buf, BUFFERSIZE - 1, 0);
+    if (bytesRcvd <= 0) {
+        ErrorHandler("Errore ricezione dal server.\n");
+        closesocket(Csocket);
+        ClearWinSock();
+        return -1;
+    }
     buf[bytesRcvd] = '\0';
     printf("SERVER: %s\n", buf);
 
-    // 6) invio lettera
+    // 8) Invio lettera
     char lettera;
     printf("Inserisci lettera (A/S/M/D): ");
     scanf(" %c", &lettera);
     send(Csocket, &lettera, 1, 0);
 
-    // 8) ricezione operazione
-    bytesRcvd = recv(Csocket, buf, BUFFERSIZE-1, 0);
+    // 9) Ricezione istruzioni
+    bytesRcvd = recv(Csocket, buf, BUFFERSIZE - 1, 0);
+    if (bytesRcvd <= 0) {
+        ErrorHandler("Errore ricezione dal server.\n");
+        closesocket(Csocket);
+        ClearWinSock();
+        return -1;
+    }
     buf[bytesRcvd] = '\0';
     printf("SERVER: %s\n", buf);
 
@@ -90,6 +112,7 @@ int main() {
         return 0;
     }
 
+    // 10) Invio numeri
     int n1, n2;
     printf("Inserisci primo numero: ");
     scanf("%d", &n1);
@@ -99,12 +122,15 @@ int main() {
     send(Csocket, (char*)&n1, sizeof(int), 0);
     send(Csocket, (char*)&n2, sizeof(int), 0);
 
+    // 11) Ricezione risultato
     int risultato;
     recv(Csocket, (char*)&risultato, sizeof(int), 0);
 
     printf("RISULTATO = %d\n", risultato);
 
+    // 12) Chiusura
     closesocket(Csocket);
     ClearWinSock();
+
     return 0;
 }
